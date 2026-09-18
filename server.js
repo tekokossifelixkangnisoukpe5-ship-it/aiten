@@ -172,8 +172,7 @@ function stopPoll(){if(chatPoll){clearInterval(chatPoll);chatPoll=null}}
 
 function filtered(){const q=search.toLowerCase();return apps.filter(a=>!q||(a.fullName||'').toLowerCase().includes(q)||(a.email||'').toLowerCase().includes(q)||(a.contactNumber||'').includes(q))}
 
-async function deleteStudent(userId,name,ev){
-  if(ev){ev.stopPropagation();ev.preventDefault()}
+async function deleteStudent(userId,name){
   if(!confirm('Supprimer definitivement '+(name||'cet etudiant')+' ?\\nCompte, candidature, documents et chat seront effaces.')) return;
   try{
     await api('DELETE','/admin/applications/'+userId);
@@ -182,6 +181,17 @@ async function deleteStudent(userId,name,ev){
   }catch(e){ alert(e.message); }
 }
 function openStudent(a){selected=a;tab='details';chatMsgs=[];render();loadChat(a.userId)}
+function openStudentById(id){
+  const a = apps.find(x => String(x.userId)===String(id));
+  if(a) openStudent(a);
+}
+document.addEventListener('click', function(e){
+  const btn = e.target.closest('button[data-uid]');
+  if(!btn) return;
+  e.preventDefault();
+  e.stopPropagation();
+  deleteStudent(btn.getAttribute('data-uid'), btn.getAttribute('data-name')||'student');
+}, true);
 function setTab(t){tab=t;render();if(t==='chat'&&selected){loadChat(selected.userId);startPoll()}else stopPoll()}
 
 function renderChatBox(){
@@ -227,23 +237,21 @@ function render(){
       \${loading?'<p class="text-center text-gray-500 py-8">Loading...</p>':''}
       \${!loading&&!list.length?'<p class="text-center text-gray-500 py-8">No applications</p>':''}
       <div class="grid gap-3">\${list.map(a=>\`
-        <div class="card p-4 cursor-pointer hover:shadow-md" onclick='openStudent(\${JSON.stringify(a).replace(/'/g,"&#39;")})'>
-          <div class="flex gap-3"><div class="w-14 h-14 rounded-lg overflow-hidden bg-gray-100 border flex-shrink-0">
-            \${a.photo?'<img src="'+a.photo+'" class="w-full h-full object-cover"/>':'<div class="w-full h-full flex items-center justify-center text-xs text-gray-400">N/A</div>'}
+        <div class="card p-4 hover:shadow-md flex gap-3 items-start">
+          <div class="flex gap-3 flex-1 min-w-0 cursor-pointer" onclick="openStudentById('\${a.userId}')">
+            <div class="w-14 h-14 rounded-lg overflow-hidden bg-gray-100 border flex-shrink-0">
+              \${a.photo?'<img src="'+a.photo+'" class="w-full h-full object-cover"/>':'<div class="w-full h-full flex items-center justify-center text-xs text-gray-400">N/A</div>'}
+            </div>
+            <div class="flex-1 min-w-0">
+              <div class="flex flex-wrap gap-2 items-center mb-1"><h3 class="font-semibold truncate">\${a.fullName||'—'}</h3>
+              <span class="text-xs px-2 py-0.5 rounded-full \${sc(a.applicationStatus)}">\${a.applicationStatus}</span></div>
+              <p class="text-sm text-gray-600 truncate">\${a.email||''}</p>
+              <p class="text-sm text-gray-500">\${a.contactNumber||''} · \${a.countryOfOrigin||''}</p>
+              <p class="text-xs text-gray-400 mt-1">\${(a.programmeChoices&&a.programmeChoices[0]&&a.programmeChoices[0].programme)||'No programme'} · \${(a.documents&&a.documents.length)||0} doc(s)</p>
+            </div>
           </div>
-          <div class="flex-1 min-w-0">
-            <div class="flex flex-wrap gap-2 items-center mb-1"><h3 class="font-semibold truncate">\${a.fullName||'—'}</h3>
-            <span class="text-xs px-2 py-0.5 rounded-full \${sc(a.applicationStatus)}">\${a.applicationStatus}</span></div>
-            <p class="text-sm text-gray-600 truncate">\${a.email||''}</p>
-            <p class="text-sm text-gray-500">\${a.contactNumber||''} · \${a.countryOfOrigin||''}</p>
-            <p class="text-xs text-gray-400 mt-1">\${(a.programmeChoices&&a.programmeChoices[0]&&a.programmeChoices[0].programme)||'No programme'} · \${(a.documents&&a.documents.length)||0} doc(s)</p>
-          </div>
-          <button type="button" onclick="event.stopPropagation();event.preventDefault();deleteStudent(String(\${JSON.stringify(a.userId)}), String(\${JSON.stringify(a.fullName||a.email||'student')}), event)"
-            class="flex-shrink-0 bg-red-600 hover:bg-red-700 text-white text-xs font-semibold px-3 py-2 rounded-lg self-center">
-            Delete
-          </button>
-          </div>
-        </div>\`).join('')}</div>
+          <button type="button" class="flex-shrink-0 bg-red-600 hover:bg-red-700 text-white text-xs font-semibold px-3 py-2 rounded-lg" data-uid="\${a.userId}" data-name="\${(a.fullName||a.email||'student').replace(/"/g,'&quot;')}">Delete</button>
+        </div>\`).join('')</div>
     </div>
     \${selected?renderModal():''}
   </div>\`;

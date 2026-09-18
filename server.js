@@ -200,13 +200,54 @@ async function changeStatus(userId, status) {
   } catch (e) { alert(e.message); }
 }
 
-async function deleteStudent(userId, name) {
-  if (!confirm('Supprimer definitivement ' + (name || 'cet etudiant') + ' ?\\nCompte, candidature, documents et chat seront effaces.')) return;
+let pendingDelete = null;
+
+function askDelete(userId, name) {
+  pendingDelete = { userId: userId, name: name || 'this student' };
+  render();
+}
+
+function cancelDelete() {
+  pendingDelete = null;
+  render();
+}
+
+async function confirmDelete() {
+  if (!pendingDelete) return;
+  var userId = pendingDelete.userId;
+  var name = pendingDelete.name;
+  pendingDelete = null;
   try {
     await api('DELETE', '/admin/applications/' + userId);
     if (selected && String(selected.userId) === String(userId)) { selected = null; stopPoll(); }
     await loadApps();
-  } catch (e) { alert(e.message); }
+  } catch (e) {
+    alert(e.message);
+    render();
+  }
+}
+
+function deleteStudent(userId, name) {
+  askDelete(userId, name);
+}
+
+function renderDeleteModal() {
+  if (!pendingDelete) return '';
+  var name = esc(pendingDelete.name);
+  return '<div class="fixed inset-0 z-[60] flex items-center justify-center p-4" style="background:rgba(15,23,42,0.55)">' +
+    '<div class="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">' +
+      '<div class="px-6 pt-6 pb-2">' +
+        '<div class="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mb-4">' +
+          '<svg class="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>' +
+        '</div>' +
+        '<h3 class="text-lg font-bold text-gray-900 mb-2">Delete student record</h3>' +
+        '<p class="text-sm text-gray-600 leading-relaxed">You are about to permanently delete <strong>' + name + '</strong>. This will remove their account, application, uploaded documents, photo and chat history. This action cannot be undone.</p>' +
+      '</div>' +
+      '<div class="px-6 py-4 bg-gray-50 flex flex-col-reverse sm:flex-row gap-2 sm:justify-end">' +
+        '<button type="button" id="btn-cancel-del" class="px-4 py-2.5 rounded-lg text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50">Cancel</button>' +
+        '<button type="button" id="btn-confirm-del" class="px-4 py-2.5 rounded-lg text-sm font-semibold text-white bg-red-600 hover:bg-red-700">Delete permanently</button>' +
+      '</div>' +
+    '</div></div>';
 }
 
 async function loadChat(userId) {
@@ -317,7 +358,7 @@ function render() {
       (!loading && !list.length ? '<p class="text-center text-gray-500 py-8">No applications</p>' : '') +
       '<div class="grid gap-3">' + cards + '</div>' +
     '</div>' +
-    (selected ? renderModal() : '') +
+    (selected ? renderModal() : '') + renderDeleteModal() +
   '</div>';
 
   // wire events (no inline handlers that conflict)
@@ -341,6 +382,10 @@ function render() {
 
   if (selected && tab === 'chat') { renderChatBox(); startPoll(); }
   wireModal();
+  var cd = document.getElementById('btn-cancel-del');
+  if (cd) cd.onclick = function(){ cancelDelete(); };
+  var cfd = document.getElementById('btn-confirm-del');
+  if (cfd) cfd.onclick = function(){ confirmDelete(); };
 }
 
 function renderModal() {

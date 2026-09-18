@@ -137,188 +137,305 @@ const ADMIN_HTML = `<!DOCTYPE html>
 <style>body{font-family:Segoe UI,system-ui,sans-serif;background:#f1f5f9;margin:0}.card{background:#fff;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.08)}</style>
 </head><body><div id="app"></div>
 <script>
-const API=location.origin+'/api';
-const LOGO='https://raw.githubusercontent.com/tekokossifelixkangnisoukpe5-ship-it/photo/main/AIT%20logo.png';
-const STAFF='https://raw.githubusercontent.com/tekokossifelixkangnisoukpe5-ship-it/photo/main/33181-1.jpg';
-let adminPwd=sessionStorage.getItem('ait_admin_pwd')||'';
-let apps=[],selected=null,search='',loading=false,error='',tab='details',chatMsgs=[],chatText='',chatPoll=null;
+const API = location.origin + '/api';
+const LOGO = 'https://raw.githubusercontent.com/tekokossifelixkangnisoukpe5-ship-it/photo/main/AIT%20logo.png';
+const STAFF = 'https://raw.githubusercontent.com/tekokossifelixkangnisoukpe5-ship-it/photo/main/33181-1.jpg';
+let adminPwd = sessionStorage.getItem('ait_admin_pwd') || '';
+let apps = [], selected = null, search = '', loading = false, error = '', tab = 'details', chatMsgs = [], chatText = '', chatPoll = null;
 
-async function api(method,path,body){
-  const h={}; if(adminPwd)h['x-admin-password']=adminPwd;
-  if(body)h['Content-Type']='application/json';
-  const r=await fetch(API+path,{method,headers:h,body:body?JSON.stringify(body):undefined});
-  const d=await r.json().catch(()=>({}));
-  if(!r.ok)throw new Error(d.message||('Error '+r.status));
+async function api(method, path, body) {
+  const h = {};
+  if (adminPwd) h['x-admin-password'] = adminPwd;
+  if (body) h['Content-Type'] = 'application/json';
+  const r = await fetch(API + path, { method, headers: h, body: body ? JSON.stringify(body) : undefined });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.message || ('Error ' + r.status));
   return d;
 }
-function sc(s){return({draft:'bg-gray-200 text-gray-700',submitted:'bg-blue-100 text-blue-800',under_review:'bg-yellow-100 text-yellow-800',accepted:'bg-green-100 text-green-800',rejected:'bg-red-100 text-red-800'})[s]||'bg-gray-100'}
-
-async function doLogin(e){e.preventDefault();const pwd=document.getElementById('pwd').value;error='';loading=true;render();
-try{await api('POST','/admin/login',{password:pwd});adminPwd=pwd;sessionStorage.setItem('ait_admin_pwd',pwd);await loadApps()}
-catch(err){error=err.message;adminPwd='';sessionStorage.removeItem('ait_admin_pwd')}loading=false;render()}
-
-async function loadApps(){loading=true;error='';render();
-try{const d=await api('GET','/admin/applications');apps=d.applications||[]}
-catch(err){error=err.message;if(/Invalid|password|Wrong/i.test(err.message)){adminPwd='';sessionStorage.removeItem('ait_admin_pwd')}}
-loading=false;render()}
-
-async function changeStatus(userId,status){try{await api('PATCH','/admin/applications/'+userId+'/status',{status});await loadApps();if(selected&&selected.userId===userId)selected.applicationStatus=status;render()}catch(e){alert(e.message)}}
-
-async function loadChat(userId){try{const d=await api('GET','/admin/chat/'+userId);chatMsgs=d.messages||[];renderChatBox()}catch(e){chatMsgs=[]}}
-async function sendChat(){if(!chatText.trim()||!selected)return;const t=chatText.trim();chatText='';
-try{await api('POST','/admin/chat/'+selected.userId,{text:t});await loadChat(selected.userId)}catch(e){alert(e.message)}}
-function startPoll(){stopPoll();if(selected&&tab==='chat')chatPoll=setInterval(()=>loadChat(selected.userId),4000)}
-function stopPoll(){if(chatPoll){clearInterval(chatPoll);chatPoll=null}}
-
-function filtered(){const q=search.toLowerCase();return apps.filter(a=>!q||(a.fullName||'').toLowerCase().includes(q)||(a.email||'').toLowerCase().includes(q)||(a.contactNumber||'').includes(q))}
-
-async function deleteStudent(userId,name){
-  if(!confirm('Supprimer definitivement '+(name||'cet etudiant')+' ?\\nCompte, candidature, documents et chat seront effaces.')) return;
-  try{
-    await api('DELETE','/admin/applications/'+userId);
-    if(selected && String(selected.userId)===String(userId)){ selected=null; stopPoll(); }
-    await loadApps();
-  }catch(e){ alert(e.message); }
+function sc(s) {
+  return ({ draft: 'bg-gray-200 text-gray-700', submitted: 'bg-blue-100 text-blue-800', under_review: 'bg-yellow-100 text-yellow-800', accepted: 'bg-green-100 text-green-800', rejected: 'bg-red-100 text-red-800' })[s] || 'bg-gray-100';
 }
-function openStudent(a){selected=a;tab='details';chatMsgs=[];render();loadChat(a.userId)}
-function openStudentById(id){
-  const a = apps.find(x => String(x.userId)===String(id));
-  if(a) openStudent(a);
+function esc(s) {
+  return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
-document.addEventListener('click', function(e){
-  const btn = e.target.closest('button[data-uid]');
-  if(!btn) return;
+
+async function doLogin(e) {
   e.preventDefault();
-  e.stopPropagation();
-  deleteStudent(btn.getAttribute('data-uid'), btn.getAttribute('data-name')||'student');
-}, true);
-function setTab(t){tab=t;render();if(t==='chat'&&selected){loadChat(selected.userId);startPoll()}else stopPoll()}
-
-function renderChatBox(){
-  const box=document.getElementById('chat-msgs');
-  if(!box)return;
-  box.innerHTML=chatMsgs.map(m=>\`<div class="flex \${m.sender==='admin'?'justify-end':'justify-start'} mb-2">
-    <div class="max-w-[80%] rounded-2xl px-3 py-2 text-sm \${m.sender==='admin'?'bg-teal-600 text-white':'bg-gray-100 text-gray-800'}">
-      <div>\${esc(m.text)}</div>
-      <div class="text-[10px] opacity-70 mt-0.5">\${new Date(m.createdAt).toLocaleString()}</div>
-    </div></div>\`).join('')||'<p class="text-gray-400 text-sm text-center">No messages yet</p>';
-  box.scrollTop=box.scrollHeight;
+  const pwd = document.getElementById('pwd').value;
+  error = ''; loading = true; render();
+  try {
+    await api('POST', '/admin/login', { password: pwd });
+    adminPwd = pwd;
+    sessionStorage.setItem('ait_admin_pwd', pwd);
+    await loadApps();
+  } catch (err) {
+    error = err.message;
+    adminPwd = '';
+    sessionStorage.removeItem('ait_admin_pwd');
+  }
+  loading = false; render();
 }
-function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
 
-function render(){
-  const el=document.getElementById('app');
-  if(!adminPwd){
-    el.innerHTML=\`<div class="min-h-screen flex items-center justify-center px-4">
-      <form onsubmit="doLogin(event)" class="card p-8 max-w-sm w-full space-y-4">
-        <img src="\${LOGO}" class="w-16 h-16 mx-auto object-contain" alt="AIT"/>
-        <h1 class="text-xl font-bold text-center" style="color:#0A4D68">AIT Admissions Admin</h1>
-        <div><label class="block text-sm font-medium mb-1">Admin Password</label>
-        <input id="pwd" type="password" required class="w-full border rounded-lg px-3 py-2.5"/></div>
-        \${error?'<p class="text-red-500 text-sm">'+error+'</p>':''}
-        <button class="w-full text-white font-semibold py-3 rounded-xl" style="background:#0A4D68" \${loading?'disabled':''}>\${loading?'Loading...':'Access Admin'}</button>
-      </form></div>\`;
+async function loadApps() {
+  loading = true; error = ''; render();
+  try {
+    const d = await api('GET', '/admin/applications');
+    apps = d.applications || [];
+  } catch (err) {
+    error = err.message;
+    if (/Invalid|password|Wrong/i.test(err.message)) {
+      adminPwd = '';
+      sessionStorage.removeItem('ait_admin_pwd');
+    }
+  }
+  loading = false; render();
+}
+
+async function changeStatus(userId, status) {
+  try {
+    await api('PATCH', '/admin/applications/' + userId + '/status', { status });
+    await loadApps();
+    if (selected && String(selected.userId) === String(userId)) selected.applicationStatus = status;
+    render();
+  } catch (e) { alert(e.message); }
+}
+
+async function deleteStudent(userId, name) {
+  if (!confirm('Supprimer definitivement ' + (name || 'cet etudiant') + ' ?\\nCompte, candidature, documents et chat seront effaces.')) return;
+  try {
+    await api('DELETE', '/admin/applications/' + userId);
+    if (selected && String(selected.userId) === String(userId)) { selected = null; stopPoll(); }
+    await loadApps();
+  } catch (e) { alert(e.message); }
+}
+
+async function loadChat(userId) {
+  try {
+    const d = await api('GET', '/admin/chat/' + userId);
+    chatMsgs = d.messages || [];
+    renderChatBox();
+  } catch (e) { chatMsgs = []; }
+}
+async function sendChat() {
+  if (!chatText.trim() || !selected) return;
+  const txt = chatText.trim(); chatText = '';
+  try {
+    await api('POST', '/admin/chat/' + selected.userId, { text: txt });
+    await loadChat(selected.userId);
+  } catch (e) { alert(e.message); }
+}
+function startPoll() {
+  stopPoll();
+  if (selected && tab === 'chat') chatPoll = setInterval(function(){ loadChat(selected.userId); }, 4000);
+}
+function stopPoll() {
+  if (chatPoll) { clearInterval(chatPoll); chatPoll = null; }
+}
+
+function filtered() {
+  const q = search.toLowerCase();
+  return apps.filter(function(a) {
+    return !q || (a.fullName || '').toLowerCase().includes(q) || (a.email || '').toLowerCase().includes(q) || (a.contactNumber || '').includes(q);
+  });
+}
+
+function openStudent(a) {
+  selected = a; tab = 'details'; chatMsgs = []; render(); loadChat(a.userId);
+}
+function openStudentById(id) {
+  var a = apps.find(function(x){ return String(x.userId) === String(id); });
+  if (a) openStudent(a);
+}
+function setTab(t) {
+  tab = t; render();
+  if (t === 'chat' && selected) { loadChat(selected.userId); startPoll(); }
+  else stopPoll();
+}
+
+function renderChatBox() {
+  var box = document.getElementById('chat-msgs');
+  if (!box) return;
+  if (!chatMsgs.length) {
+    box.innerHTML = '<p class="text-gray-400 text-sm text-center">No messages yet</p>';
     return;
   }
-  const list=filtered();
-  el.innerHTML=\`<div class="min-h-screen">
-    <div class="text-white px-4 py-4 flex flex-wrap items-center justify-between gap-2" style="background:#0A4D68">
-      <div class="flex items-center gap-3"><img src="\${LOGO}" class="w-10 h-10 object-contain bg-white rounded-full p-0.5"/><h1 class="font-bold text-lg">AIT Admissions Admin</h1></div>
-      <div class="flex gap-2">
-        <button onclick="loadApps()" class="bg-white/20 px-3 py-1.5 rounded-lg text-sm">Refresh</button>
-        <button onclick="stopPoll();adminPwd='';sessionStorage.removeItem('ait_admin_pwd');render()" class="bg-white/20 px-3 py-1.5 rounded-lg text-sm">Logout</button>
-      </div>
-    </div>
-    <div class="max-w-6xl mx-auto px-3 py-4">
-      <div class="mb-4 flex flex-col sm:flex-row gap-2 justify-between">
-        <p class="font-semibold">All Students (\${list.length})</p>
-        <input type="search" value="\${search.replace(/"/g,'&quot;')}" oninput="search=this.value;render()" placeholder="Search..." class="border rounded-lg px-3 py-2 text-sm w-full sm:w-64"/>
-      </div>
-      \${loading?'<p class="text-center text-gray-500 py-8">Loading...</p>':''}
-      \${!loading&&!list.length?'<p class="text-center text-gray-500 py-8">No applications</p>':''}
-      <div class="grid gap-3">\${list.map(a=>\`
-        <div class="card p-4 hover:shadow-md flex gap-3 items-start">
-          <div class="flex gap-3 flex-1 min-w-0 cursor-pointer" onclick="openStudentById('\${a.userId}')">
-            <div class="w-14 h-14 rounded-lg overflow-hidden bg-gray-100 border flex-shrink-0">
-              \${a.photo?'<img src="'+a.photo+'" class="w-full h-full object-cover"/>':'<div class="w-full h-full flex items-center justify-center text-xs text-gray-400">N/A</div>'}
-            </div>
-            <div class="flex-1 min-w-0">
-              <div class="flex flex-wrap gap-2 items-center mb-1"><h3 class="font-semibold truncate">\${a.fullName||'—'}</h3>
-              <span class="text-xs px-2 py-0.5 rounded-full \${sc(a.applicationStatus)}">\${a.applicationStatus}</span></div>
-              <p class="text-sm text-gray-600 truncate">\${a.email||''}</p>
-              <p class="text-sm text-gray-500">\${a.contactNumber||''} · \${a.countryOfOrigin||''}</p>
-              <p class="text-xs text-gray-400 mt-1">\${(a.programmeChoices&&a.programmeChoices[0]&&a.programmeChoices[0].programme)||'No programme'} · \${(a.documents&&a.documents.length)||0} doc(s)</p>
-            </div>
-          </div>
-          <button type="button" class="flex-shrink-0 bg-red-600 hover:bg-red-700 text-white text-xs font-semibold px-3 py-2 rounded-lg" data-uid="\${a.userId}" data-name="\${(a.fullName||a.email||'student').replace(/"/g,'&quot;')}">Delete</button>
-        </div>\`).join('')</div>
-    </div>
-    \${selected?renderModal():''}
-  </div>\`;
-  if(selected&&tab==='chat'){renderChatBox();startPoll()}
+  box.innerHTML = chatMsgs.map(function(m) {
+    var side = m.sender === 'admin' ? 'justify-end' : 'justify-start';
+    var bg = m.sender === 'admin' ? 'bg-teal-600 text-white' : 'bg-gray-100 text-gray-800';
+    return '<div class="flex ' + side + ' mb-2"><div class="max-w-[80%] rounded-2xl px-3 py-2 text-sm ' + bg + '"><div>' + esc(m.text) + '</div><div class="text-[10px] opacity-70 mt-0.5">' + new Date(m.createdAt).toLocaleString() + '</div></div></div>';
+  }).join('');
+  box.scrollTop = box.scrollHeight;
 }
 
-function renderModal(){
-  const a=selected;
-  return \`<div class="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" onclick="if(event.target===this){stopPoll();selected=null;render()}">
-    <div class="bg-white w-full sm:max-w-2xl sm:rounded-2xl rounded-t-2xl max-h-[92vh] overflow-y-auto" onclick="event.stopPropagation()">
-      <div class="sticky top-0 bg-white border-b px-4 py-3 flex justify-between items-center z-10">
-        <h2 class="font-bold" style="color:#0A4D68">Student</h2>
-        <button onclick="stopPoll();selected=null;render()" class="text-2xl text-gray-500">&times;</button>
-      </div>
-      <div class="flex border-b">
-        <button onclick="setTab('details')" class="flex-1 py-2.5 text-sm font-medium \${tab==='details'?'border-b-2 text-teal-700 border-teal-600':'text-gray-500'}">Details</button>
-        <button onclick="setTab('chat')" class="flex-1 py-2.5 text-sm font-medium \${tab==='chat'?'border-b-2 text-teal-700 border-teal-600':'text-gray-500'}">Conversations</button>
-      </div>
-      \${tab==='details'?renderDetails(a):renderChatTab(a)}
-    </div></div>\`;
+function render() {
+  var el = document.getElementById('app');
+  if (!adminPwd) {
+    el.innerHTML = '<div class="min-h-screen flex items-center justify-center px-4"><form onsubmit="doLogin(event)" class="card p-8 max-w-sm w-full space-y-4">' +
+      '<img src="' + LOGO + '" class="w-16 h-16 mx-auto object-contain" alt="AIT"/>' +
+      '<h1 class="text-xl font-bold text-center" style="color:#0A4D68">AIT Admissions Admin</h1>' +
+      '<div><label class="block text-sm font-medium mb-1">Admin Password</label>' +
+      '<input id="pwd" type="password" required class="w-full border rounded-lg px-3 py-2.5"/></div>' +
+      (error ? '<p class="text-red-500 text-sm">' + esc(error) + '</p>' : '') +
+      '<button class="w-full text-white font-semibold py-3 rounded-xl" style="background:#0A4D68"' + (loading ? ' disabled' : '') + '>' + (loading ? 'Loading...' : 'Access Admin') + '</button></form></div>';
+    return;
+  }
+  var list = filtered();
+  var cards = list.map(function(a) {
+    var photo = a.photo
+      ? '<img src="' + esc(a.photo) + '" class="w-full h-full object-cover"/>'
+      : '<div class="w-full h-full flex items-center justify-center text-xs text-gray-400">N/A</div>';
+    var prog = (a.programmeChoices && a.programmeChoices[0] && a.programmeChoices[0].programme) || 'No programme';
+    var ndocs = (a.documents && a.documents.length) || 0;
+    return '<div class="card p-4 hover:shadow-md flex gap-3 items-start">' +
+      '<div class="flex gap-3 flex-1 min-w-0 cursor-pointer" data-open="' + esc(String(a.userId)) + '">' +
+        '<div class="w-14 h-14 rounded-lg overflow-hidden bg-gray-100 border flex-shrink-0">' + photo + '</div>' +
+        '<div class="flex-1 min-w-0">' +
+          '<div class="flex flex-wrap gap-2 items-center mb-1"><h3 class="font-semibold truncate">' + esc(a.fullName || '—') + '</h3>' +
+          '<span class="text-xs px-2 py-0.5 rounded-full ' + sc(a.applicationStatus) + '">' + esc(a.applicationStatus) + '</span></div>' +
+          '<p class="text-sm text-gray-600 truncate">' + esc(a.email || '') + '</p>' +
+          '<p class="text-sm text-gray-500">' + esc(a.contactNumber || '') + ' · ' + esc(a.countryOfOrigin || '') + '</p>' +
+          '<p class="text-xs text-gray-400 mt-1">' + esc(prog) + ' · ' + ndocs + ' doc(s)</p>' +
+        '</div>' +
+      '</div>' +
+      '<button type="button" class="flex-shrink-0 bg-red-600 hover:bg-red-700 text-white text-xs font-semibold px-3 py-2 rounded-lg" data-del="' + esc(String(a.userId)) + '" data-name="' + esc(a.fullName || a.email || 'student') + '">Delete</button>' +
+    '</div>';
+  }).join('');
+
+  el.innerHTML = '<div class="min-h-screen">' +
+    '<div class="text-white px-4 py-4 flex flex-wrap items-center justify-between gap-2" style="background:#0A4D68">' +
+      '<div class="flex items-center gap-3"><img src="' + LOGO + '" class="w-10 h-10 object-contain bg-white rounded-full p-0.5"/><h1 class="font-bold text-lg">AIT Admissions Admin</h1></div>' +
+      '<div class="flex gap-2">' +
+        '<button type="button" id="btn-refresh" class="bg-white/20 px-3 py-1.5 rounded-lg text-sm">Refresh</button>' +
+        '<button type="button" id="btn-logout" class="bg-white/20 px-3 py-1.5 rounded-lg text-sm">Logout</button>' +
+      '</div></div>' +
+    '<div class="max-w-6xl mx-auto px-3 py-4">' +
+      '<div class="mb-4 flex flex-col sm:flex-row gap-2 justify-between">' +
+        '<p class="font-semibold">All Students (' + list.length + ')</p>' +
+        '<input type="search" id="search-input" value="' + esc(search) + '" placeholder="Search..." class="border rounded-lg px-3 py-2 text-sm w-full sm:w-64"/>' +
+      '</div>' +
+      (loading ? '<p class="text-center text-gray-500 py-8">Loading...</p>' : '') +
+      (!loading && !list.length ? '<p class="text-center text-gray-500 py-8">No applications</p>' : '') +
+      '<div class="grid gap-3">' + cards + '</div>' +
+    '</div>' +
+    (selected ? renderModal() : '') +
+  '</div>';
+
+  // wire events (no inline handlers that conflict)
+  var ref = document.getElementById('btn-refresh');
+  if (ref) ref.onclick = function(){ loadApps(); };
+  var lo = document.getElementById('btn-logout');
+  if (lo) lo.onclick = function(){ stopPoll(); adminPwd=''; sessionStorage.removeItem('ait_admin_pwd'); render(); };
+  var si = document.getElementById('search-input');
+  if (si) si.oninput = function(){ search = this.value; render(); };
+
+  document.querySelectorAll('[data-open]').forEach(function(node){
+    node.onclick = function(e){ e.stopPropagation(); openStudentById(node.getAttribute('data-open')); };
+  });
+  document.querySelectorAll('[data-del]').forEach(function(btn){
+    btn.onclick = function(e){
+      e.preventDefault();
+      e.stopPropagation();
+      deleteStudent(btn.getAttribute('data-del'), btn.getAttribute('data-name') || 'student');
+    };
+  });
+
+  if (selected && tab === 'chat') { renderChatBox(); startPoll(); }
+  wireModal();
 }
-function renderDetails(a){
-  return \`<div class="p-4 sm:p-6 space-y-4">
-    <div class="flex gap-4"><div class="w-24 h-28 rounded-lg overflow-hidden bg-gray-100 border flex-shrink-0">
-      \${a.photo?'<img src="'+a.photo+'" class="w-full h-full object-cover"/>':'<div class="w-full h-full flex items-center justify-center text-sm text-gray-400">No photo</div>'}
-    </div>
-    <div><h3 class="text-lg font-bold">\${a.fullName||'—'}</h3><p class="text-sm text-gray-600">\${a.email||''}</p>
-    <span class="inline-block mt-2 text-xs px-2.5 py-1 rounded-full \${sc(a.applicationStatus)}">\${a.applicationStatus}</span></div></div>
-    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
-      <div><span class="text-gray-500">Phone:</span> <strong>\${a.contactNumber||'—'}</strong></div>
-      <div><span class="text-gray-500">WhatsApp:</span> <strong>\${a.whatsappContact||'—'}</strong></div>
-      <div><span class="text-gray-500">Gender:</span> <strong>\${a.gender||'—'}</strong></div>
-      <div><span class="text-gray-500">Country:</span> <strong>\${a.countryOfOrigin||'—'}</strong></div>
-      <div class="sm:col-span-2"><span class="text-gray-500">Address:</span> <strong>\${a.homeAddress||'—'}</strong></div>
-      <div><span class="text-gray-500">Applying for:</span> <strong>\${a.applyingFor||'—'}</strong></div>
-      <div><span class="text-gray-500">Program type:</span> <strong>\${a.programType||'—'}</strong></div>
-      <div><span class="text-gray-500">Qualification:</span> <strong>\${a.highestQualification||'—'}</strong></div>
-      <div><span class="text-gray-500">Submitted:</span> <strong>\${a.submittedAt?new Date(a.submittedAt).toLocaleString():'—'}</strong></div>
-    </div>
-    <div><h4 class="font-semibold text-sm border-b-2 pb-1 mb-2" style="color:#0A4D68;border-color:#0A4D68">Programmes</h4>
-      <ol class="list-decimal list-inside text-sm">\${(a.programmeChoices||[]).map(p=>'<li>'+(p.programme||'')+'</li>').join('')||'<li class="text-gray-400">—</li>'}</ol></div>
-    <div><h4 class="font-semibold text-sm border-b-2 pb-1 mb-2" style="color:#0A4D68;border-color:#0A4D68">Grades</h4>
-      <div class="grid grid-cols-2 gap-1 text-sm">\${(a.courseGrades||[]).map(g=>'<div class="flex justify-between bg-slate-50 rounded px-2 py-1"><span>'+g.course+'</span><strong>'+g.grade+'</strong></div>').join('')||'<span class="text-gray-400">—</span>'}</div></div>
-    <div><h4 class="font-semibold text-sm border-b-2 pb-1 mb-2" style="color:#0A4D68;border-color:#0A4D68">Documents</h4>
-      \${(a.documents&&a.documents.length)?a.documents.map(d=>'<a href="'+(d.url||d.path)+'" target="_blank" class="block text-sm underline mb-1" style="color:#0A4D68">📄 '+(d.originalName||d.filename)+'</a>').join(''):'<p class="text-sm text-gray-400">No documents</p>'}</div>
-    <div><h4 class="font-semibold text-sm border-b-2 pb-1 mb-2" style="color:#0A4D68;border-color:#0A4D68">Status</h4>
-      <div class="flex flex-wrap gap-2">\${['draft','submitted','under_review','accepted','rejected'].map(s=>
-        '<button onclick="changeStatus(\\''+a.userId+'\\',\\''+s+'\\')" class="text-xs px-3 py-1.5 rounded-full border '+sc(s)+(a.applicationStatus===s?' ring-2':'')+'">'+s+'</button>').join('')}</div></div>
-  </div>\`;
+
+function renderModal() {
+  var a = selected;
+  var photo = a.photo
+    ? '<img src="' + esc(a.photo) + '" class="w-full h-full object-cover"/>'
+    : '<div class="w-full h-full flex items-center justify-center text-sm text-gray-400">No photo</div>';
+  var tabs = '<div class="flex border-b">' +
+    '<button type="button" data-tab="details" class="flex-1 py-2.5 text-sm font-medium ' + (tab==='details'?'border-b-2 text-teal-700 border-teal-600':'text-gray-500') + '">Details</button>' +
+    '<button type="button" data-tab="chat" class="flex-1 py-2.5 text-sm font-medium ' + (tab==='chat'?'border-b-2 text-teal-700 border-teal-600':'text-gray-500') + '">Conversations</button></div>';
+
+  var body = tab === 'details' ? renderDetails(a) : renderChatTab(a);
+  return '<div class="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" id="modal-backdrop">' +
+    '<div class="bg-white w-full sm:max-w-2xl sm:rounded-2xl rounded-t-2xl max-h-[92vh] overflow-y-auto" id="modal-panel">' +
+      '<div class="sticky top-0 bg-white border-b px-4 py-3 flex justify-between items-center z-10">' +
+        '<h2 class="font-bold" style="color:#0A4D68">Student</h2>' +
+        '<button type="button" id="modal-close" class="text-2xl text-gray-500">&times;</button></div>' +
+      tabs + body +
+    '</div></div>';
 }
-function renderChatTab(a){
-  return \`<div class="p-4 flex flex-col" style="min-height:360px">
-    <div class="flex items-center gap-3 mb-3 pb-3 border-b">
-      <img src="\${STAFF}" class="w-12 h-12 rounded-full object-cover border-2 border-teal-600"/>
-      <div><p class="font-semibold text-sm">Admissions Officer</p><p class="text-xs text-gray-500">Chat with \${a.fullName||'student'}</p></div>
-    </div>
-    <div id="chat-msgs" class="flex-1 overflow-y-auto mb-3" style="max-height:280px"></div>
-    <div class="flex gap-2">
-      <input id="chat-input" type="text" placeholder="Type a message..." class="flex-1 border rounded-full px-4 py-2 text-sm outline-none"
-        onkeydown="if(event.key==='Enter'){chatText=this.value;sendChat();this.value=''}" />
-      <button onclick="chatText=document.getElementById('chat-input').value;sendChat();document.getElementById('chat-input').value=''"
-        class="text-white px-4 py-2 rounded-full text-sm font-medium" style="background:#0A4D68">Send</button>
-    </div>
-  </div>\`;
+
+function renderDetails(a) {
+  var progs = (a.programmeChoices || []).map(function(p,i){ return '<li>' + esc(p.programme || '') + '</li>'; }).join('') || '<li class="text-gray-400">—</li>';
+  var grades = (a.courseGrades || []).map(function(g){
+    return '<div class="flex justify-between bg-slate-50 rounded px-2 py-1"><span>' + esc(g.course) + '</span><strong>' + esc(g.grade) + '</strong></div>';
+  }).join('') || '<span class="text-gray-400">—</span>';
+  var docs = (a.documents && a.documents.length)
+    ? a.documents.map(function(d){ return '<a href="' + esc(d.url || d.path) + '" target="_blank" class="block text-sm underline mb-1" style="color:#0A4D68">📄 ' + esc(d.originalName || d.filename) + '</a>'; }).join('')
+    : '<p class="text-sm text-gray-400">No documents</p>';
+  var statuses = ['draft','submitted','under_review','accepted','rejected'].map(function(s){
+    return '<button type="button" data-status="' + s + '" class="text-xs px-3 py-1.5 rounded-full border ' + sc(s) + (a.applicationStatus===s?' ring-2':'') + '">' + s + '</button>';
+  }).join('');
+
+  return '<div class="p-4 sm:p-6 space-y-4">' +
+    '<div class="flex gap-4"><div class="w-24 h-28 rounded-lg overflow-hidden bg-gray-100 border flex-shrink-0">' + (a.photo ? '<img src="'+esc(a.photo)+'" class="w-full h-full object-cover"/>' : '<div class="w-full h-full flex items-center justify-center text-sm text-gray-400">No photo</div>') + '</div>' +
+    '<div><h3 class="text-lg font-bold">' + esc(a.fullName||'—') + '</h3><p class="text-sm text-gray-600">' + esc(a.email||'') + '</p>' +
+    '<span class="inline-block mt-2 text-xs px-2.5 py-1 rounded-full ' + sc(a.applicationStatus) + '">' + esc(a.applicationStatus) + '</span></div></div>' +
+    '<div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">' +
+      '<div><span class="text-gray-500">Phone:</span> <strong>' + esc(a.contactNumber||'—') + '</strong></div>' +
+      '<div><span class="text-gray-500">WhatsApp:</span> <strong>' + esc(a.whatsappContact||'—') + '</strong></div>' +
+      '<div><span class="text-gray-500">Gender:</span> <strong>' + esc(a.gender||'—') + '</strong></div>' +
+      '<div><span class="text-gray-500">Country:</span> <strong>' + esc(a.countryOfOrigin||'—') + '</strong></div>' +
+      '<div class="sm:col-span-2"><span class="text-gray-500">Address:</span> <strong>' + esc(a.homeAddress||'—') + '</strong></div>' +
+      '<div><span class="text-gray-500">Applying for:</span> <strong>' + esc(a.applyingFor||'—') + '</strong></div>' +
+      '<div><span class="text-gray-500">Program type:</span> <strong>' + esc(a.programType||'—') + '</strong></div>' +
+      '<div><span class="text-gray-500">Qualification:</span> <strong>' + esc(a.highestQualification||'—') + '</strong></div>' +
+      '<div><span class="text-gray-500">Submitted:</span> <strong>' + (a.submittedAt ? esc(new Date(a.submittedAt).toLocaleString()) : '—') + '</strong></div>' +
+    '</div>' +
+    '<div><h4 class="font-semibold text-sm border-b-2 pb-1 mb-2" style="color:#0A4D68;border-color:#0A4D68">Programmes</h4><ol class="list-decimal list-inside text-sm">' + progs + '</ol></div>' +
+    '<div><h4 class="font-semibold text-sm border-b-2 pb-1 mb-2" style="color:#0A4D68;border-color:#0A4D68">Grades</h4><div class="grid grid-cols-2 gap-1 text-sm">' + grades + '</div></div>' +
+    '<div><h4 class="font-semibold text-sm border-b-2 pb-1 mb-2" style="color:#0A4D68;border-color:#0A4D68">Documents</h4>' + docs + '</div>' +
+    '<div><h4 class="font-semibold text-sm border-b-2 pb-1 mb-2" style="color:#0A4D68;border-color:#0A4D68">Status</h4><div class="flex flex-wrap gap-2" id="status-btns">' + statuses + '</div></div>' +
+    '<div><button type="button" id="btn-del-modal" class="bg-red-600 hover:bg-red-700 text-white text-sm font-semibold px-4 py-2 rounded-lg">Delete student</button></div>' +
+  '</div>';
 }
-if(adminPwd)loadApps();else render();
+
+function renderChatTab(a) {
+  return '<div class="p-4 flex flex-col" style="min-height:360px">' +
+    '<div class="flex items-center gap-3 mb-3 pb-3 border-b">' +
+      '<img src="' + STAFF + '" class="w-12 h-12 rounded-full object-cover border-2 border-teal-600"/>' +
+      '<div><p class="font-semibold text-sm">Admissions Officer</p><p class="text-xs text-gray-500">Chat with ' + esc(a.fullName||'student') + '</p></div></div>' +
+    '<div id="chat-msgs" class="flex-1 overflow-y-auto mb-3" style="max-height:280px"></div>' +
+    '<div class="flex gap-2">' +
+      '<input id="chat-input" type="text" placeholder="Type a message..." class="flex-1 border rounded-full px-4 py-2 text-sm outline-none"/>' +
+      '<button type="button" id="chat-send" class="text-white px-4 py-2 rounded-full text-sm font-medium" style="background:#0A4D68">Send</button>' +
+    '</div></div>';
+}
+
+function wireModal() {
+  if (!selected) return;
+  var bd = document.getElementById('modal-backdrop');
+  var panel = document.getElementById('modal-panel');
+  var close = document.getElementById('modal-close');
+  if (bd) bd.onclick = function(e){ if (e.target === bd) { stopPoll(); selected = null; render(); } };
+  if (panel) panel.onclick = function(e){ e.stopPropagation(); };
+  if (close) close.onclick = function(){ stopPoll(); selected = null; render(); };
+  document.querySelectorAll('[data-tab]').forEach(function(b){
+    b.onclick = function(e){ e.stopPropagation(); setTab(b.getAttribute('data-tab')); };
+  });
+  document.querySelectorAll('[data-status]').forEach(function(b){
+    b.onclick = function(e){ e.stopPropagation(); changeStatus(selected.userId, b.getAttribute('data-status')); };
+  });
+  var dm = document.getElementById('btn-del-modal');
+  if (dm) dm.onclick = function(e){ e.stopPropagation(); deleteStudent(selected.userId, selected.fullName || selected.email); };
+  var ci = document.getElementById('chat-input');
+  var cs = document.getElementById('chat-send');
+  if (ci) ci.onkeydown = function(e){ if (e.key === 'Enter') { chatText = ci.value; sendChat(); ci.value = ''; } };
+  if (cs) cs.onclick = function(){ chatText = (ci && ci.value) || ''; sendChat(); if (ci) ci.value = ''; };
+}
+
+if (adminPwd) loadApps(); else render();
 </script></body></html>`;
+
+
+
 
 app.get('/', (req, res) => res.json({ success: true, message: 'AIT Admission API v4', admin: '/admin' }));
 app.get('/admin', (req, res) => { res.setHeader('Content-Type', 'text/html; charset=utf-8'); res.send(ADMIN_HTML); });

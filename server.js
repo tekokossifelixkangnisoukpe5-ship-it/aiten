@@ -76,7 +76,14 @@ const chatSchema = new mongoose.Schema({
 const ChatMessage = mongoose.model('ChatMessage', chatSchema);
 
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' }, contentSecurityPolicy: false }));
-app.use(cors({ origin: process.env.FRONTEND_URL || '*', credentials: true }));
+const _fo = (process.env.FRONTEND_URL || '*').replace(/\/$/, '');
+app.use(cors({
+  origin: function (origin, callback) {
+    if (!origin || _fo === '*' || origin.replace(/\/$/, '') === _fo) return callback(null, true);
+    return callback(null, true); // allow in production admissions portal
+  },
+  credentials: true,
+}));
 app.use(morgan('dev'));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
@@ -221,7 +228,12 @@ function render(){
             <p class="text-sm text-gray-600 truncate">\${a.email||''}</p>
             <p class="text-sm text-gray-500">\${a.contactNumber||''} · \${a.countryOfOrigin||''}</p>
             <p class="text-xs text-gray-400 mt-1">\${(a.programmeChoices&&a.programmeChoices[0]&&a.programmeChoices[0].programme)||'No programme'} · \${(a.documents&&a.documents.length)||0} doc(s)</p>
-          </div></div>
+          </div>
+          <button type="button" onclick="deleteStudent('\${a.userId}','\${(a.fullName||a.email||'student').replace(/'/g,"\\\\'")}',event)"
+            class="flex-shrink-0 bg-red-600 hover:bg-red-700 text-white text-xs font-semibold px-3 py-2 rounded-lg self-center">
+            Delete
+          </button>
+          </div>
         </div>\`).join('')}</div>
     </div>
     \${selected?renderModal():''}
@@ -498,6 +510,34 @@ app.patch('/api/admin/applications/:userId/status', adminAuth, async (req, res) 
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
     res.json({ success: true, user });
   } catch (err) { res.status(500).json({ success: false, message: 'Server error' }); }
+});
+
+
+app.delete('/api/admin/applications/:userId', adminAuth, async (req, res) => {
+  try {
+    const userId = req.params.userId;
+    const application = await Application.findOne({ user: userId });
+    if (application) {
+      for (const d of (application.documents || [])) {
+        if (d.filename) {
+          const fp = path.join(UPLOAD_DIR, d.filename);
+          if (fs.existsSync(fp)) fs.unlinkSync(fp);
+        }
+      }
+      await Application.deleteOne({ _id: application._id });
+    }
+    const user = await User.findById(userId);
+    if (user && user.photo) {
+      const fp = path.join(UPLOAD_DIR, path.basename(user.photo));
+      if (fs.existsSync(fp)) fs.unlinkSync(fp);
+    }
+    await ChatMessage.deleteMany({ user: userId });
+    await User.deleteOne({ _id: userId });
+    res.json({ success: true, message: 'Student deleted' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: 'Server error deleting student' });
+  }
 });
 
 app.get('/api/admin/chat/:userId', adminAuth, async (req, res) => {

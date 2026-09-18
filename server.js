@@ -172,6 +172,15 @@ function stopPoll(){if(chatPoll){clearInterval(chatPoll);chatPoll=null}}
 
 function filtered(){const q=search.toLowerCase();return apps.filter(a=>!q||(a.fullName||'').toLowerCase().includes(q)||(a.email||'').toLowerCase().includes(q)||(a.contactNumber||'').includes(q))}
 
+async function deleteStudent(userId,name,ev){
+  if(ev){ev.stopPropagation();ev.preventDefault()}
+  if(!confirm('Supprimer definitivement '+(name||'cet etudiant')+' ?\\nCompte, candidature, documents et chat seront effaces.')) return;
+  try{
+    await api('DELETE','/admin/applications/'+userId);
+    if(selected && String(selected.userId)===String(userId)){ selected=null; stopPoll(); }
+    await loadApps();
+  }catch(e){ alert(e.message); }
+}
 function openStudent(a){selected=a;tab='details';chatMsgs=[];render();loadChat(a.userId)}
 function setTab(t){tab=t;render();if(t==='chat'&&selected){loadChat(selected.userId);startPoll()}else stopPoll()}
 
@@ -229,7 +238,7 @@ function render(){
             <p class="text-sm text-gray-500">\${a.contactNumber||''} · \${a.countryOfOrigin||''}</p>
             <p class="text-xs text-gray-400 mt-1">\${(a.programmeChoices&&a.programmeChoices[0]&&a.programmeChoices[0].programme)||'No programme'} · \${(a.documents&&a.documents.length)||0} doc(s)</p>
           </div>
-          <button type="button" onclick="deleteStudent('\${a.userId}','\${(a.fullName||a.email||'student').replace(/'/g,"\\\\'")}',event)"
+          <button type="button" onclick="event.stopPropagation();event.preventDefault();deleteStudent(String(\${JSON.stringify(a.userId)}), String(\${JSON.stringify(a.fullName||a.email||'student')}), event)"
             class="flex-shrink-0 bg-red-600 hover:bg-red-700 text-white text-xs font-semibold px-3 py-2 rounded-lg self-center">
             Delete
           </button>
